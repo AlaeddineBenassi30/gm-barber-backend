@@ -33,10 +33,16 @@ const Booking = mongoose.model('Booking', bookingSchema);
 // 2. EMAIL NOTIFICATION SETUP
 // ==========================================
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // MUST be true for port 465
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
+    },
+    tls: {
+        // Do not fail on invalid certs (often required for cloud hosting)
+        rejectUnauthorized: false
     }
 });
 
