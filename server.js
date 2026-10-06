@@ -45,7 +45,7 @@ app.post('/api/book', async (req, res) => {
         // 3. Send email notification via Resend HTTP API
         const emailData = await resend.emails.send({
             from: 'onboarding@resend.dev',
-            to: 'benassialaeddine@gmail.com',
+            to: 'bproducts69@gmail.com',
             subject: 'Neuer Termin gebucht! (GM Studio)',
             html: `
                 <h2>Neuer Termin im GM Studio!</h2>
