@@ -42,7 +42,7 @@ app.post('/api/book', async (req, res) => {
         const newAppointment = new Appointment({ name, email, phone, service, date });
         await newAppointment.save();
 
-       // 3. Send email notification via Resend HTTP API
+     // 3. Send email notification via Resend HTTP API
         const emailData = await resend.emails.send({
             from: 'onboarding@resend.dev',
             to: 'bproducts69@gmail.com', 
