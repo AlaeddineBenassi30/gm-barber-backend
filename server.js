@@ -2,134 +2,81 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
+app.use(express.json());
+app.use(cors());
 
-// Middleware
-app.use(cors()); // Allows your frontend to talk to this backend
-app.use(express.json()); // Allows parsing of JSON data from the frontend
+// Pulls securely from Render Environment Variables
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ==========================================
-// 1. MONGODB DATABASE SETUP
-// ==========================================
-mongoose.connect(process.env.MONGO_URI)
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB Real-Time Calendar'))
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
+    .catch((err) => console.error('MongoDB connection error:', err));
 
-// Define what a "Booking" looks like in the database
-const bookingSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true }, 
-    phone: { type: String, required: true },
-    service: { type: String, required: true },
-    date: { type: String, required: true }, // Stored as "YYYY-MM-DD HH:MM"
-    createdAt: { type: Date, default: Date.now }
+// Booking Schema
+const appointmentSchema = new mongoose.Schema({
+    name: String,
+    email: String,
+    phone: String,
+    service: String,
+    date: String
 });
 
-const Booking = mongoose.model('Booking', bookingSchema);
+const Appointment = mongoose.model('Appointment', appointmentSchema);
 
-// ==========================================
-// 2. EMAIL NOTIFICATION SETUP
-// ==========================================
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // MUST be true for port 465
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        // Do not fail on invalid certs (often required for cloud hosting)
-        rejectUnauthorized: false
-    }
-});
-
-// ==========================================
-// 3. API ROUTES
-// ==========================================
-
-// ROUTE 1: Check Availability (Frontend calls this to disable booked times)
-app.get('/api/availability', async (req, res) => {
-    try {
-        const bookings = await Booking.find({}, 'date'); 
-        const bookedSlots = bookings.map(b => b.date); 
-        res.status(200).json(bookedSlots);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Fehler beim Laden der Verfügbarkeit.' });
-    }
-});
-
-// ROUTE 2: Process a New Booking
+// Booking Endpoint
 app.post('/api/book', async (req, res) => {
-    const { name, email, phone, service, date } = req.body;
-
     try {
-        // A. Check if the time slot is already taken
-        const existingBooking = await Booking.findOne({ date });
-        if (existingBooking) {
-            return res.status(400).json({ error: 'Dieser Termin ist leider schon vergeben.' });
+        const { name, email, phone, service, date } = req.body;
+
+        // 1. Check for conflicts
+        const existingAppointment = await Appointment.findOne({ date: date });
+        if (existingAppointment) {
+            return res.status(400).json({ error: "Dieser Termin ist leider schon vergeben." });
         }
 
-        // B. Save the new booking to MongoDB
-        const newBooking = new Booking({ name, email, phone, service, date });
-        await newBooking.save();
+        // 2. Save appointment
+        const newAppointment = new Appointment({ name, email, phone, service, date });
+        await newAppointment.save();
 
-        // C. Send Confirmation Email to the Customer
-        const customerMailOptions = {
-            from: `"GM Studio" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: 'Terminbestätigung - GM Studio',
+        // 3. Send email notification via Resend HTTP API
+        const emailData = await resend.emails.send({
+            from: 'onboarding@resend.dev',
+            to: 'benassialaeddine@gmail.com',
+            subject: 'Neuer Termin gebucht! (GM Studio)',
             html: `
-                <h2>Hallo ${name},</h2>
-                <p>Dein Termin bei GM Studio ist bestätigt!</p>
-                <ul>
-                    <li><strong>Service:</strong> ${service}</li>
-                    <li><strong>Datum & Zeit:</strong> ${date} Uhr</li>
-                </ul>
-                <p>Wir freuen uns auf dich!<br>Dein GM Studio Team</p>
-                <p><small>EKATERINBURG, ST. KIM, 45</small></p>
+                <h2>Neuer Termin im GM Studio!</h2>
+                <p><strong>Kunde:</strong> ${name || 'Nicht angegeben'}</p>
+                <p><strong>Telefon:</strong> ${phone || 'Nicht angegeben'}</p>
+                <p><strong>E-Mail:</strong> ${email || 'Nicht angegeben'}</p>
+                <p><strong>Service:</strong> ${service || 'Haarschnitt'}</p>
+                <p><strong>Datum & Uhrzeit:</strong> ${date}</p>
             `
-        };
+        });
 
-        // D. Send Alert Email to YOU (The Admin)
-        const adminMailOptions = {
-            from: `"GM Studio System" <${process.env.EMAIL_USER}>`,
-            to: process.env.EMAIL_USER, 
-            subject: `Neue Buchung: ${service} am ${date}`,
-            html: `
-                <h2>Neue Terminbuchung!</h2>
-                <ul>
-                    <li><strong>Kunde:</strong> ${name}</li>
-                    <li><strong>Telefon:</strong> ${phone}</li>
-                    <li><strong>Email:</strong> ${email}</li>
-                    <li><strong>Service:</strong> ${service}</li>
-                    <li><strong>Datum & Zeit:</strong> ${date}</li>
-                </ul>
-            `
-        };
-
-        // Send both emails simultaneously
-        await Promise.all([
-            transporter.sendMail(customerMailOptions),
-            transporter.sendMail(adminMailOptions)
-        ]);
-
-        // E. Tell the frontend it was successful
-        res.status(200).json({ message: 'Dein Termin wurde erfolgreich gebucht!' });
+        console.log("Email sent successfully:", emailData);
+        res.status(200).json({ message: "Termin erfolgreich gebucht!" });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Serverfehler. Bitte versuche es später erneut.' });
+        console.error("Booking error:", error);
+        res.status(500).json({ error: "Serverfehler. Bitte versuche es später erneut." });
     }
 });
 
-// ==========================================
-// 4. START THE SERVER
-// ==========================================
-const PORT = process.env.PORT || 3000;
+// Fetch appointments endpoint
+app.get('/api/appointments', async (req, res) => {
+    try {
+        const appointments = await Appointment.find();
+        res.status(200).json(appointments);
+    } catch (error) {
+        res.status(500).json({ error: "Fehler beim Laden der Termine." });
+    }
+});
+
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
