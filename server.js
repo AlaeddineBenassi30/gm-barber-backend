@@ -42,13 +42,15 @@ app.post('/api/book', async (req, res) => {
         const newAppointment = new Appointment({ name, email, phone, service, date });
         await newAppointment.save();
 
-        // 3. Send email notification via Resend HTTP API
+       // 3. Send email notification via Resend HTTP API
         const emailData = await resend.emails.send({
             from: 'onboarding@resend.dev',
-            to: 'bproducts69@gmail.com',
-            subject: 'Neuer Termin gebucht! (GM Studio)',
+            to: 'benassialaeddine@gmail.com', 
+            subject: 'Neuer Termin gebucht! (Osis+7 studio)',
             html: `
-                <h2>Neuer Termin im GM Studio!</h2>
+                <h2>Neuer Termin im Osis+7 studio!</h2>
+                <p><strong>Adresse:</strong> GRABENSTRASSE 27, 73033 GÖPPINGEN</p>
+                <hr>
                 <p><strong>Kunde:</strong> ${name || 'Nicht angegeben'}</p>
                 <p><strong>Telefon:</strong> ${phone || 'Nicht angegeben'}</p>
                 <p><strong>E-Mail:</strong> ${email || 'Nicht angegeben'}</p>
